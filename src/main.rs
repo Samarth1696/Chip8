@@ -3,8 +3,11 @@ use std::io::Read;
 use chip8::Chip8;
 
 mod ram;
+mod bus;
 mod cpu;
 mod chip8;
+mod keyboard;
+mod display;
 
 fn main() {
     let mut file = File::open("data/INVADERS").unwrap();
