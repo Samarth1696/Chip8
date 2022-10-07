@@ -147,7 +147,9 @@ impl Cpu {
 
             0xD => {
                 //draw(Vx,Vy,N)
-                self.debug_draw_sprite(bus, x, y, n);
+                let vx = self.read_reg_vx(x);
+                let vy = self.read_reg_vx(y);
+                self.debug_draw_sprite(bus, vx, vy, n);
                 self.pc += 2;
             }
 
@@ -177,9 +179,29 @@ impl Cpu {
             }
 
             0xF => {
-                // I += Vx
-                let vx = self.read_reg_vx(x);
-                self.i += vx as u16;
+                match nn {
+                    0x07 => {
+                        self.write_reg_vx(x, bus.get_delay_timer());
+                    }
+                    0x15 => {
+                        // delay_timer(Vx)
+                        bus.set_delay_timer(self.read_reg_vx(x));
+                    }
+                    0x65 => {
+                        // reg_load(Vx, &i)
+                        for index in 0..(x+1) {
+                            let value = bus.ram_read_byte(self.i + index as u16);
+                            self.write_reg_vx(index, value);
+                        }
+                    }
+                    0x1E => {    
+                        // I += Vx
+                        let vx = self.read_reg_vx(x);
+                        self.i += vx as u16;
+                    }
+                    _ => panic!("Unrecognized 0xF0** instruction {:#X}:{:#X}", self.pc, instruction),
+                }
+
                 self.pc += 2;
             }
             _ => panic!("Unrecognized instruction {:#X}:{:#X}", self.pc, instruction),
@@ -201,7 +223,7 @@ impl Cpu {
         } else {
             self.write_reg_vx(0xF, 0);
         }
-        // bus.present_screen();
+        bus.present_screen();
     }
 
     pub fn write_reg_vx(&mut self, index: u8, value: u8){

@@ -1,8 +1,9 @@
 [package]
-name = "GTK-CHIP8"
+name = "Chip8"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+minifb = "0.23.0"

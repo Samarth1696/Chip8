@@ -22,6 +22,13 @@ impl Chip8 {
     }
 
     pub fn run_instruction(&mut self){
+        self.bus.tick();
         self.cpu.run_instruction(&mut self.bus);
+        println!("Cpu state: {:?}", self.cpu);
+        println!("Bus state: {:?}", self.bus);
+    }
+
+    pub fn get_display_buffer(&self) -> &[u8] {
+        self.bus.get_display_buffer()
     }
 }
