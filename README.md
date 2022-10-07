@@ -1,3 +1,3 @@
-# GTK-CHIP8
+# Overview
 
-Chip-8 Emulator made with Rust + GTK
+Chip-8 Emulator in Rust
