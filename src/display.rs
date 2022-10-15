@@ -11,33 +11,31 @@ impl Display {
         }
     }
 
-    fn get_index_from_coords(x: usize, y: usize) -> usize {
+    pub fn get_index_from_coords(x: usize, y: usize) -> usize {
         y * WIDTH + x
     } 
 
     pub fn debug_draw_byte(&mut self, byte: u8,x: u8,y: u8) -> bool{
-            let mut flipped = false;
+            let mut erased = false;
             let mut b = byte;
             let mut coord_x = x as usize;
             let coord_y = y as usize;
             
             for _ in 0..8 {
                 let index = Display::get_index_from_coords(coord_x, coord_y);
-                match (b & 0b1000_0000) >> 7 {
-                    0 => {
-                        if self.screen[index] == 1 {
-                            flipped = true;
-                        }
-                        self.screen[index] = 0;
-                    },
-                    1 => self.screen[index] = 1,
-                    _ => unreachable!()
-                };
+                let bit = (b & 0b1000_0000) >> 7;
+                let prev_value = self.screen[index];
+                self.screen[index] ^= bit;
+
+                if prev_value == 1 && self.screen[index] == 0 {
+                    erased = true;
+                }
+
                 coord_x += 1;
                 b = b << 1;
             }
 
-        flipped
+        erased
     }
 
     pub fn clear(&mut self){

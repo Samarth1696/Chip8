@@ -7,7 +7,6 @@ pub struct Cpu {
     vx: [u8; 16],
     pc: u16,
     i: u16,
-    prev_pc: u16,
     ret_stack: Vec<u16>
 }
 
@@ -17,7 +16,6 @@ impl Cpu {
             vx: [0; 16],
             pc: PROGRAM_START,
             i: 0,
-            prev_pc: 0,
             ret_stack: Vec::<u16>::new()
         }
     }
@@ -34,12 +32,6 @@ impl Cpu {
         let x = ((instruction & 0x0F00) >> 8) as u8;
         let y = ((instruction & 0x00F0) >> 4) as u8;
         println!("nnn={:?}, nn={:?}, n={:?}, x={}, y={}", nnn, nn, n, x, y);
-        // self.pc += 2;
-
-        if self.prev_pc == self.pc {
-            panic!("Please increment PC!");
-        }
-        self.prev_pc = self.pc;
 
         match (instruction & 0xF000) >> 12 {
             0x0 => {
@@ -73,7 +65,7 @@ impl Cpu {
                 }else{
                     self.pc += 2;
                 }
-            }
+            },
             0x4 => {
                 // if(Vx!=nn)
                 let vx = self.read_reg_vx(x);
@@ -158,7 +150,7 @@ impl Cpu {
                     0xA1 => {
                         //if(key()!=Vx) then skip the next instruction
                         let key = self.read_reg_vx(x);
-                        if !bus.key_pressed(key){
+                        if !bus.is_key_pressed(key){
                             self.pc += 4;
                         } else {
                             self.pc += 2;
@@ -167,7 +159,7 @@ impl Cpu {
                     0x9E => {
                         //if(key()==Vx) then skip the next instruction
                         let key = self.read_reg_vx(x);
-                        if bus.key_pressed(key){
+                        if bus.is_key_pressed(key){
                             self.pc += 4;
                         } else {
                             self.pc += 2;
@@ -182,27 +174,41 @@ impl Cpu {
                 match nn {
                     0x07 => {
                         self.write_reg_vx(x, bus.get_delay_timer());
-                    }
+                        self.pc += 2;
+                    },
+                    0x0A => {
+                        // Vx = get_key()
+                        let key = bus.get_key_pressed();
+                        match key {
+                            Some(val) => {
+                                self.write_reg_vx(x, val);
+                                self.pc += 2;
+                            }
+                            None => ()
+                        }
+                    },
                     0x15 => {
                         // delay_timer(Vx)
                         bus.set_delay_timer(self.read_reg_vx(x));
-                    }
+                        self.pc += 2;
+                    },
                     0x65 => {
                         // reg_load(Vx, &i)
                         for index in 0..(x+1) {
                             let value = bus.ram_read_byte(self.i + index as u16);
                             self.write_reg_vx(index, value);
                         }
-                    }
+                        self.pc += 2;
+                    },
                     0x1E => {    
                         // I += Vx
                         let vx = self.read_reg_vx(x);
                         self.i += vx as u16;
-                    }
+                        self.pc += 2;
+                    },
                     _ => panic!("Unrecognized 0xF0** instruction {:#X}:{:#X}", self.pc, instruction),
                 }
 
-                self.pc += 2;
             }
             _ => panic!("Unrecognized instruction {:#X}:{:#X}", self.pc, instruction),
         }
@@ -212,14 +218,14 @@ impl Cpu {
     fn debug_draw_sprite(&mut self, bus: &mut Bus,x: u8, y: u8, height: u8){
         println!("Drawing sprites at ({},{})", x, y);
         let mut should_set_vf = false;
-        for y in 0..height {
-            let b = bus.ram_read_byte(self.i + y as u16);
-            if bus.debug_draw_byte(b, x, y) {
+        for sprite_y in 0..height {
+            let b = bus.ram_read_byte(self.i + sprite_y as u16);
+            if bus.debug_draw_byte(b, x, y + sprite_y) {
                 should_set_vf = true;
             }
         }
         if should_set_vf {
-            self.write_reg_vx(0xF, 0);
+            self.write_reg_vx(0xF, 1);
         } else {
             self.write_reg_vx(0xF, 0);
         }

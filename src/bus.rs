@@ -1,13 +1,14 @@
 use crate::keyboard::Keyboard;
 use crate::display::Display;
 use crate::ram::Ram;
+use minifb::Window;
 use std::fmt;
 
 pub struct Bus{
     ram: Ram,
     keyboard: Keyboard,
     display: Display,
-    delay_timer: u8
+    delay_timer: u8,
 }
 
 impl Bus {
@@ -40,9 +41,17 @@ impl Bus {
     pub fn clear_screen(&mut self) {
         self.display.clear();   
     }
+
+    pub fn set_key_pressed(&mut self, key: Option<u8>)  {
+        self.keyboard.set_key_pressed(key);
+    }
     
-    pub fn key_pressed(&mut self, key_code: u8) -> bool{
-        self.keyboard.key_pressed(key_code)
+    pub fn is_key_pressed(&self, key_code: u8) -> bool{
+        self.keyboard.is_key_pressed(key_code)
+    }
+
+    pub fn get_key_pressed(&self) -> Option<u8> {
+        self.keyboard.get_key_pressed()
     }
 
     pub fn set_delay_timer(&mut self, value: u8) {
