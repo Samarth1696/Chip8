@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::Read;
 use chip8::Chip8;
 use display::Display;
+use std::time::{Duration, Instant};
 
 mod ram;
 mod bus;
@@ -41,48 +42,58 @@ fn get_chip8_keycode_for(key: Option<Key>) -> Option<u8> {
 fn main() {
     let mut file = File::open("data/INVADERS").unwrap();
     let mut data = Vec::<u8>::new();
-    file.read_to_end(&mut data).unwrap();
+    file.read_to_end(&mut data).expect("File not found!");
 
-    const WIDTH: usize = 640;
-    const HEIGHT: usize = 320;
+    const width: usize = 640;
+    const height: usize = 320;
 
-    let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+    let mut buffer: Vec<u32> = vec![0; width * height];
 
     let mut window = Window::new(
-        "Chip8 Emulator in Rust",
-        WIDTH,
-        HEIGHT,
+        "Rust Chip8 emulator",
+        width,
+        height,
         WindowOptions::default(),
-    )
-    .unwrap_or_else(|e| {
-        panic!("{}", e);
+    ).unwrap_or_else(|e| {
+        panic!("Window creation failed: {:?}", e);
     });
     
     let mut chip8 = Chip8::new();
     chip8.load_rom(data);
 
+    let mut last_key_update_time = Instant::now();
+    let mut last_instruction_run_time = Instant::now();
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
 
-        let keys_pressed = window.get_keys_pressed(KeyRepeat::No);
+        let keys_pressed = window.get_keys_pressed(KeyRepeat::Yes);
         let key = match keys_pressed {
-            Some(keys) => {
-                if keys.len() > 0 {
+            Some(keys) => if keys.len() > 0 {
                     Some(keys[0])
                 } else {
                     None
-                }
-            }
-            None => None
+                },
+            None => None,
         };
 
+        let diff_update_time = Instant::now() - last_key_update_time;
         let chip8_key = get_chip8_keycode_for(key);
-        chip8.set_key_pressed(chip8_key);
+        if chip8_key.is_some() || diff_update_time >= Duration::from_millis(250) {
+            last_key_update_time = Instant::now();
+            chip8.set_key_pressed(chip8_key);
+        }
+
+        let diff_update_time = Instant::now() - last_instruction_run_time;
+        if diff_update_time > Duration::from_millis(16) {
+            chip8.run_instruction();
+            last_instruction_run_time = Instant::now();
+        }
 
         chip8.run_instruction();
         let chip8_buffer = chip8.get_display_buffer();
 
-        for y in 0..HEIGHT{
-            for x in 0..WIDTH{
+        for y in 0..height{
+            for x in 0..width{
                 let index = Display::get_index_from_coords(x/10, y/10);
                 let pixel = chip8_buffer[index];
                 let color_pixel = match pixel {
@@ -90,7 +101,7 @@ fn main() {
                     1 => 0xffffff,
                     _ => unreachable!()
                 };
-                buffer[y * WIDTH + x] = color_pixel;
+                buffer[y * width + x] = color_pixel;
             }
         }
 

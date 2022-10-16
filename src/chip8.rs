@@ -1,4 +1,3 @@
-use minifb::Window;
 use crate::bus::Bus;
 use crate::cpu;
 use crate::cpu::Cpu;

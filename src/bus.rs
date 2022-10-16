@@ -1,7 +1,6 @@
 use crate::keyboard::Keyboard;
 use crate::display::Display;
 use crate::ram::Ram;
-use minifb::Window;
 use std::fmt;
 
 pub struct Bus{
@@ -32,10 +31,6 @@ impl Bus {
 
     pub fn debug_draw_byte(&mut self, byte: u8,x: u8,y: u8) -> bool{
         self.display.debug_draw_byte(byte, x, y)
-    }
-
-    pub fn present_screen(&mut self) {
-        self.display.present();
     }
 
     pub fn clear_screen(&mut self) {
