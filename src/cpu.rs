@@ -1,47 +1,128 @@
-use crate::bus::Bus;
-use std::fmt;
-use rand;
-use rand::distributions::{IndependentSample, Range};
+use crate::rand::ComplementaryMultiplyWithCarryGen;
+use crate::ram::Ram;
+use crate::keyboard::Keyboard;
+use crate::display::Display;
+use wasm_bindgen::prelude::*;
 
 pub const PROGRAM_START: u16 = 0x200;
 
+#[wasm_bindgen]
 pub struct Cpu {
     vx: [u8; 16],
     pc: u16,
     i: u16,
     ret_stack: Vec<u16>,
-    rng: rand::ThreadRng
+    rand: ComplementaryMultiplyWithCarryGen,
+    ram: Ram,
+    display: Display,
+    keyboard: Keyboard,
+    delay_timer: u8,
+    sound_timer: u8,
 }
 
+#[wasm_bindgen]
 impl Cpu {
-    pub fn new() -> Cpu {
-        Cpu {
+    pub fn new(data: &[u8]) -> Cpu {
+        let mut memory: Vec<u8> = vec![0; 4096];
+        for i in 0..data.len() {
+            let p = i as usize;
+            memory[0x200 + p] = data[p];
+        }
+        let mut cpu = Cpu {
+            ram: Ram{
+                mem: memory
+            },
             vx: [0; 16],
             pc: PROGRAM_START,
             i: 0,
             ret_stack: Vec::<u16>::new(),
-            rng: rand::thread_rng()
+            rand: ComplementaryMultiplyWithCarryGen::new(1),
+            display: Display::new(),
+            keyboard: Keyboard::new(),
+            delay_timer: 0,
+            sound_timer: 0
+        };
+
+        let sprites: [[u8; 5]; 16] = [
+            [0xF0, 0x90, 0x90, 0x90, 0xF0], //0
+            [0x20, 0x60, 0x20, 0x20, 0x70], //1
+            [0xF0, 0x10, 0xF0, 0x10, 0xF0], //2
+            [0xF0, 0x10, 0xF0, 0x10, 0xF0], //3
+            [0x90, 0x90, 0xF0, 0x10, 0x10], //4
+            [0xF0, 0x80, 0xF0, 0x10, 0xF0], //5
+            [0xF0, 0x80, 0xF0, 0x90, 0xF0], //6
+            [0xF0, 0x10, 0x20, 0x40, 0x40], //7
+            [0xF0, 0x90, 0xF0, 0x90, 0xF0], //8
+            [0xF0, 0x90, 0xF0, 0x10, 0xF0], //9
+            [0xF0, 0x90, 0xF0, 0x90, 0x90], //A
+            [0xE0, 0x90, 0xE0, 0x90, 0xE0], //B
+            [0xF0, 0x80, 0x80, 0x80, 0xF0], //C
+            [0xE0, 0x90, 0x90, 0x90, 0xE0], //D
+            [0xF0, 0x80, 0xF0, 0x80, 0xF0], //E
+            [0xF0, 0x80, 0xF0, 0x80, 0x80], //F
+        ];
+        let mut i=0;
+        for sprite in sprites.iter() {
+            for ch in sprite {
+                cpu.ram.write_byte(i, *ch);
+                i += 1;
+            }
+        }
+
+        cpu
+    }
+
+    pub fn cpu_refresh() -> Cpu {
+        Cpu {
+            ram: Ram::new(),
+            vx: [0; 16],
+            pc: PROGRAM_START,
+            i: 0,
+            ret_stack: Vec::<u16>::new(),
+            rand: ComplementaryMultiplyWithCarryGen::new(1),
+            display: Display::new(),
+            keyboard: Keyboard::new(),
+            delay_timer: 0,
+            sound_timer: 0
         }
     }
 
-    pub fn run_instruction(&mut self, bus: &mut Bus) {
-        let hi = bus.ram_read_byte(self.pc) as u16;
-        let lo = bus.ram_read_byte(self.pc + 1) as u16;
+    pub fn get_display_memory(&self) -> Vec<u8>{
+        self.display.get_display_memory()
+    }
+
+    pub fn get_memory(&self) -> Vec<u8>{
+        self.ram.get_memory()
+    }
+
+    pub fn tick(&mut self){
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+          }
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1
+        }
+    }
+
+    pub fn run_instruction(&mut self) {
+        self.tick();
+
+        let hi = self.ram.read_byte(self.pc) as u16;
+        let lo = self.ram.read_byte(self.pc + 1) as u16;
         let instruction: u16 = (hi << 8) | lo;
-        println!("instruction: {:#X}:{:#X}, hi: {:#X}, lo: {:#X}", self.pc, instruction, lo, hi);
         
         let nnn = instruction & 0x0FFF;
         let nn = (instruction & 0x0FF) as u8;
         let n = (instruction & 0x00F) as u8;
         let x = ((instruction & 0x0F00) >> 8) as u8;
         let y = ((instruction & 0x00F0) >> 4) as u8;
-        println!("nnn={:?}, nn={:?}, n={:?}, x={}, y={}", nnn, nn, n, x, y);
 
         match (instruction & 0xF000) >> 12 {
             0x0 => {
                 match nn {
                     0xE0 => {
-                        bus.clear_screen();
+                        self.display.clear();
                         self.pc += 2;
                     }
                     0xEE => {
@@ -178,8 +259,7 @@ impl Cpu {
             },
             0xC => {
                 // Vx=rand()&NN
-                let interval = Range::new(0, 255);
-                let number = interval.ind_sample(&mut self.rng);
+                let number = self.rand.random() as u8;
                 self.write_reg_vx(x, number & nn);
                 self.pc += 2;
             }
@@ -187,7 +267,7 @@ impl Cpu {
                 //draw(Vx,Vy,N)
                 let vx = self.read_reg_vx(x);
                 let vy = self.read_reg_vx(y);
-                self.debug_draw_sprite(bus, vx, vy, n);
+                self.debug_draw_sprite(vx, vy, n);
                 self.pc += 2;
             }
             0xE => {
@@ -195,7 +275,7 @@ impl Cpu {
                     0xA1 => {
                         //if(key()!=Vx) then skip the next instruction
                         let key = self.read_reg_vx(x);
-                        if !bus.is_key_pressed(key){
+                        if !self.keyboard.is_key_pressed(key){
                             self.pc += 4;
                         } else {
                             self.pc += 2;
@@ -204,7 +284,7 @@ impl Cpu {
                     0x9E => {
                         //if(key()==Vx) then skip the next instruction
                         let key = self.read_reg_vx(x);
-                        if bus.is_key_pressed(key){
+                        if self.keyboard.is_key_pressed(key) {
                             self.pc += 4;
                         } else {
                             self.pc += 2;
@@ -218,12 +298,12 @@ impl Cpu {
             0xF => {
                 match nn {
                     0x07 => {
-                        self.write_reg_vx(x, bus.get_delay_timer());
+                        self.write_reg_vx(x, self.delay_timer);
                         self.pc += 2;
                     },
                     0x0A => {
                         // Vx = get_key()
-                        let key = bus.get_key_pressed();
+                        let key = self.keyboard.get_key_pressed();
                         match key {
                             Some(val) => {
                                 self.write_reg_vx(x, val);
@@ -234,11 +314,12 @@ impl Cpu {
                     },
                     0x15 => {
                         // delay_timer(Vx)
-                        bus.set_delay_timer(self.read_reg_vx(x));
+                        self.delay_timer = self.read_reg_vx(x);
                         self.pc += 2;
                     },
                     0x18 => {
                         // Sound timer (skipped for now)
+                        self.sound_timer = self.read_reg_vx(x);
                         self.pc += 2;
                     },
                     0x1E => {    
@@ -256,16 +337,16 @@ impl Cpu {
                     },
                     0x33 => {
                         let vx = self.read_reg_vx(x);
-                        bus.ram_write_byte(self.i, vx / 100);
-                        bus.ram_write_byte(self.i + 1, (vx % 100) / 10);
-                        bus.ram_write_byte(self.i + 2, vx % 10);
+                        self.ram.write_byte(self.i, vx / 100);
+                        self.ram.write_byte(self.i + 1, (vx % 100) / 10);
+                        self.ram.write_byte(self.i + 2, vx % 10);
                         self.pc += 2;
                     },
                     0x55 => {
                         // reg_dump(Vx, &I)
                         for index in 0..x + 1 {
                             let value = self.read_reg_vx(index);
-                            bus.ram_write_byte(self.i + index as u16, value);
+                            self.ram.write_byte(self.i + index as u16, value);
                         }
                         self.i += x as u16 + 1;
                         self.pc += 2;
@@ -273,7 +354,7 @@ impl Cpu {
                     0x65 => {
                         // reg_load(Vx, &I)
                         for index in 0..x + 1 {
-                            let value = bus.ram_read_byte(self.i + index as u16);
+                            let value = self.ram.read_byte(self.i + index as u16);
                             self.write_reg_vx(index, value);
                         }
                         self.i += x as u16 + 1;
@@ -288,12 +369,11 @@ impl Cpu {
         
     }
 
-    fn debug_draw_sprite(&mut self, bus: &mut Bus,x: u8, y: u8, height: u8){
-        println!("Drawing sprites at ({},{})", x, y);
+    fn debug_draw_sprite(&mut self,x: u8, y: u8, height: u8){
         let mut should_set_vf = false;
         for sprite_y in 0..height {
-            let b = bus.ram_read_byte(self.i + sprite_y as u16);
-            if bus.debug_draw_byte(b, x, y + sprite_y) {
+            let b = self.ram.read_byte(self.i + sprite_y as u16);
+            if self.display.debug_draw_byte(b, x, y + sprite_y) {
                 should_set_vf = true;
             }
         }
@@ -312,17 +392,5 @@ impl Cpu {
     pub fn read_reg_vx(&mut self, index: u8) -> u8{
         self.vx[index as usize]
     }
-}
 
-impl fmt::Debug for Cpu{
-        
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\npc: {:#X}\n", self.pc)?;
-        write!(f, "vx: ")?;
-        for item in &self.vx {
-            write!(f, "{:#X} ", *item)?;
-        }
-        write!(f, "\n")?;
-        write!(f, "i: {:#X}\n", self.i)
-    }
 }

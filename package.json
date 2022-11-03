@@ -1,0 +1,30 @@
+{
+  "name": "chip8",
+  "version": "1.0.0",
+  "description": "Chip-8 Emulator in Rust",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "webpack-dev-server"
+  },
+  "dependencies": {
+    "chip8-wasm": "file:../pkg"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^5.0.0",
+    "webpack": "^4.46.0",
+    "webpack-cli": "^3.3.12",
+    "webpack-dev-server": "^3.1.5",
+    "webpack-merge": "^4.2.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Samarth1696/Chip8.git"
+  },
+  "author": "samarthrobo03@gmail.com",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Samarth1696/Chip8/issues"
+  },
+  "homepage": "https://github.com/Samarth1696/Chip8#readme"
+}
