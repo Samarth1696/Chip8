@@ -1,7 +1,7 @@
-use crate::rand::ComplementaryMultiplyWithCarryGen;
-use crate::ram::Ram;
-use crate::keyboard::Keyboard;
 use crate::display::Display;
+use crate::keyboard::Keyboard;
+use crate::ram::Ram;
+use crate::rand::ComplementaryMultiplyWithCarryGen;
 use wasm_bindgen::prelude::*;
 
 pub const PROGRAM_START: u16 = 0x200;
@@ -29,9 +29,7 @@ impl Cpu {
             memory[0x200 + p] = data[p];
         }
         let mut cpu = Cpu {
-            ram: Ram{
-                mem: memory
-            },
+            ram: Ram { mem: memory },
             vx: [0; 16],
             pc: PROGRAM_START,
             i: 0,
@@ -40,7 +38,7 @@ impl Cpu {
             display: Display::new(),
             keyboard: Keyboard::new(),
             delay_timer: 0,
-            sound_timer: 0
+            sound_timer: 0,
         };
 
         let sprites: [[u8; 5]; 16] = [
@@ -61,7 +59,7 @@ impl Cpu {
             [0xF0, 0x80, 0xF0, 0x80, 0xF0], //E
             [0xF0, 0x80, 0xF0, 0x80, 0x80], //F
         ];
-        let mut i=0;
+        let mut i = 0;
         for sprite in sprites.iter() {
             for ch in sprite {
                 cpu.ram.write_byte(i, *ch);
@@ -83,22 +81,30 @@ impl Cpu {
             display: Display::new(),
             keyboard: Keyboard::new(),
             delay_timer: 0,
-            sound_timer: 0
+            sound_timer: 0,
         }
     }
 
-    pub fn get_display_memory(&self) -> Vec<u8>{
+    pub fn key_up(&mut self, key: u8) {
+        self.keyboard.key_up(key);
+    }
+
+    pub fn key_down(&mut self, key: u8) {
+        self.keyboard.key_down(key);
+    }
+
+    pub fn get_display_memory(&self) -> Vec<u8> {
         self.display.get_display_memory()
     }
 
-    pub fn get_memory(&self) -> Vec<u8>{
+    pub fn get_memory(&self) -> Vec<u8> {
         self.ram.get_memory()
     }
 
-    pub fn tick(&mut self){
+    pub fn tick(&mut self) {
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
-          }
+        }
 
         if self.delay_timer > 0 {
             self.delay_timer -= 1
@@ -106,12 +112,10 @@ impl Cpu {
     }
 
     pub fn run_instruction(&mut self) {
-        self.tick();
-
         let hi = self.ram.read_byte(self.pc) as u16;
         let lo = self.ram.read_byte(self.pc + 1) as u16;
         let instruction: u16 = (hi << 8) | lo;
-        
+
         let nnn = instruction & 0x0FFF;
         let nn = (instruction & 0x0FF) as u8;
         let n = (instruction & 0x00F) as u8;
@@ -130,7 +134,10 @@ impl Cpu {
                         let addr = self.ret_stack.pop().unwrap();
                         self.pc = addr;
                     }
-                    _ => panic!("Unrecognized 0x00** instruction {:#X}:{:#X}", self.pc, instruction),
+                    _ => panic!(
+                        "Unrecognized 0x00** instruction {:#X}:{:#X}",
+                        self.pc, instruction
+                    ),
                 }
             }
             0x1 => {
@@ -145,18 +152,18 @@ impl Cpu {
             0x3 => {
                 // if(Vx==nn)
                 let vx = self.read_reg_vx(x);
-                if vx == nn{
+                if vx == nn {
                     self.pc += 4;
-                }else{
+                } else {
                     self.pc += 2;
                 }
-            },
+            }
             0x4 => {
                 // if(Vx!=nn) Skip to next instruction
                 let vx = self.read_reg_vx(x);
-                if vx != nn{
+                if vx != nn {
                     self.pc += 4;
-                }else{
+                } else {
                     self.pc += 2;
                 }
             }
@@ -181,63 +188,75 @@ impl Cpu {
                 self.pc += 2;
             }
             0x8 => {
-                let vy = self.read_reg_vx(y);
-                    let vx = self.read_reg_vx(x);
-                    
                 match n {
                     0x0 => {
                         // Vx=Vy
+                        let vy = self.read_reg_vx(y);
                         self.write_reg_vx(x, vy);
                     }
                     0x2 => {
                         // Vx &= Vy
+                        let vy = self.read_reg_vx(y);
+                        let vx = self.read_reg_vx(x);
                         self.write_reg_vx(x, vx & vy);
                     }
                     0x3 => {
                         // Vx ^ Vy
+                        let vy = self.read_reg_vx(y);
+                        let vx = self.read_reg_vx(x);
                         self.write_reg_vx(x, vx ^ vy);
                     }
                     0x4 => {
                         // Vx += Vy
-                        let sum: u16 = vx as u16 + vy as u16;
-                        self.write_reg_vx(x, sum as u8);
-                        if sum > 0xFF {
-                            self.write_reg_vx(0xF, 1);
+                        let vy = self.read_reg_vx(y);
+                        let vx = self.read_reg_vx(x);
+                        let sum = (vx as u16).wrapping_add(vy as u16);
+                        match sum > 0xFF {
+                            true => self.write_reg_vx(0xF, 1),
+                            false => self.write_reg_vx(0xF, 0),
                         }
+                        self.write_reg_vx(x, sum as u8);
                     }
                     0x5 => {
-                        let diff: i8 = vx as i8 - vy as i8;
-                        self.write_reg_vx(x, diff as u8);
-                        if diff < 0 {
-                            self.write_reg_vx(0xF, 1);
-                        } else {
-                            self.write_reg_vx(0xF, 0);
+                        let vy = self.read_reg_vx(y);
+                        let vx = self.read_reg_vx(x);
+                        let diff = vx.wrapping_sub(vy);
+                        match vx > vy {
+                            true => self.write_reg_vx(0xF, 1),
+                            false => self.write_reg_vx(0xF, 0),
                         }
-                    },
+                        self.write_reg_vx(x, diff);
+                    }
                     0x6 => {
                         // Vx=Vx>>1
+                        let vx = self.read_reg_vx(x);
                         self.write_reg_vx(0xF, vx & 0x1);
                         self.write_reg_vx(x, vx >> 1);
-                    },
+                    }
                     0x7 => {
-                        let diff: i8 = vy as i8 - vx as i8;
-                        self.write_reg_vx(x, diff as u8);
-                        if diff < 0 {
-                            self.write_reg_vx(0xF, 1);
-                        } else {
-                            self.write_reg_vx(0xF, 0);
+                        let vy = self.read_reg_vx(y);
+                        let vx = self.read_reg_vx(x);
+                        let diff = vy.wrapping_sub(vx);
+                        match vy > vx {
+                            true => self.write_reg_vx(0xF, 1),
+                            false => self.write_reg_vx(0xF, 0),
                         }
-                    },
+                        self.write_reg_vx(x, diff);
+                    }
                     0xE => {
                         // 0xF is the most significant bit value.
                         // SHR Vx
-                        self.write_reg_vx(0xF, (vx & 0x80) >> 7) ;
+                        let vx = self.read_reg_vx(x);
+                        self.write_reg_vx(0xF, (vx & 0x80) >> 7);
                         self.write_reg_vx(x, vx << 1);
                     }
-                    _ => panic!("Unrecognized 0x8XY* instruction {:#X}:{:#X}", self.pc, instruction),
-               };
+                    _ => panic!(
+                        "Unrecognized 0x8XY* instruction {:#X}:{:#X}",
+                        self.pc, instruction
+                    ),
+                };
 
-               self.pc += 2;
+                self.pc += 2;
             }
             0x9 => {
                 //skips the next instruction if(Vx!=Vy)
@@ -248,15 +267,15 @@ impl Cpu {
                 } else {
                     self.pc += 2;
                 }
-            },
+            }
             0xA => {
                 // I = NNN
                 self.i = nnn;
                 self.pc += 2;
-            },            
+            }
             0xB => {
                 self.pc = self.read_reg_vx(0) as u16 + nnn;
-            },
+            }
             0xC => {
                 // Vx=rand()&NN
                 let number = self.rand.random() as u8;
@@ -275,7 +294,7 @@ impl Cpu {
                     0xA1 => {
                         //if(key()!=Vx) then skip the next instruction
                         let key = self.read_reg_vx(x);
-                        if !self.keyboard.is_key_pressed(key){
+                        if !self.keyboard.is_key_pressed(key) {
                             self.pc += 4;
                         } else {
                             self.pc += 2;
@@ -290,9 +309,11 @@ impl Cpu {
                             self.pc += 2;
                         }
                     }
-                    _ => panic!("Unrecognized 0xEX** instruction {:#X}:{:#X}", self.pc, instruction),
+                    _ => panic!(
+                        "Unrecognized 0xEX** instruction {:#X}:{:#X}",
+                        self.pc, instruction
+                    ),
                 };
-
             }
 
             0xF => {
@@ -300,48 +321,46 @@ impl Cpu {
                     0x07 => {
                         self.write_reg_vx(x, self.delay_timer);
                         self.pc += 2;
-                    },
+                    }
                     0x0A => {
                         // Vx = get_key()
-                        let key = self.keyboard.get_key_pressed();
-                        match key {
-                            Some(val) => {
-                                self.write_reg_vx(x, val);
+                        for (i, key) in self.keyboard.key_pressed.iter().enumerate() {
+                            if *key == true {
+                                self.vx[x as usize] = i as u8;
                                 self.pc += 2;
                             }
-                            None => (),
                         }
-                    },
+                    }
                     0x15 => {
                         // delay_timer(Vx)
                         self.delay_timer = self.read_reg_vx(x);
                         self.pc += 2;
-                    },
+                    }
                     0x18 => {
                         // Sound timer (skipped for now)
                         self.sound_timer = self.read_reg_vx(x);
                         self.pc += 2;
-                    },
-                    0x1E => {    
+                    }
+                    0x1E => {
                         // I += Vx
                         let vx = self.read_reg_vx(x);
                         self.i += vx as u16;
                         self.pc += 2;
-                    },
+                    }
                     0x29 => {
                         //i == sprite address for character in Vx
                         //Multiply by 5 because each sprite has 5 lines, each line
                         //is 1 byte.
                         self.i = self.read_reg_vx(x) as u16 * 5;
                         self.pc += 2;
-                    },
+                    }
                     0x33 => {
                         let vx = self.read_reg_vx(x);
                         self.ram.write_byte(self.i, vx / 100);
                         self.ram.write_byte(self.i + 1, (vx % 100) / 10);
                         self.ram.write_byte(self.i + 2, vx % 10);
                         self.pc += 2;
-                    },
+                    }
                     0x55 => {
                         // reg_dump(Vx, &I)
                         for index in 0..x + 1 {
@@ -350,7 +369,7 @@ impl Cpu {
                         }
                         self.i += x as u16 + 1;
                         self.pc += 2;
-                    },
+                    }
                     0x65 => {
                         // reg_load(Vx, &I)
                         for index in 0..x + 1 {
@@ -359,17 +378,18 @@ impl Cpu {
                         }
                         self.i += x as u16 + 1;
                         self.pc += 2;
-                    },
-                    _ => panic!("Unrecognized 0xF0** instruction {:#X}:{:#X}", self.pc, instruction),
+                    }
+                    _ => panic!(
+                        "Unrecognized 0xF0** instruction {:#X}:{:#X}",
+                        self.pc, instruction
+                    ),
                 }
-                
             }
             _ => panic!("Unrecognized instruction {:#X}:{:#X}", self.pc, instruction),
         }
-        
     }
 
-    fn debug_draw_sprite(&mut self,x: u8, y: u8, height: u8){
+    fn debug_draw_sprite(&mut self, x: u8, y: u8, height: u8) {
         let mut should_set_vf = false;
         for sprite_y in 0..height {
             let b = self.ram.read_byte(self.i + sprite_y as u16);
@@ -385,12 +405,11 @@ impl Cpu {
         // bus.present_screen();
     }
 
-    pub fn write_reg_vx(&mut self, index: u8, value: u8){
+    pub fn write_reg_vx(&mut self, index: u8, value: u8) {
         self.vx[index as usize] = value
     }
 
-    pub fn read_reg_vx(&mut self, index: u8) -> u8{
+    pub fn read_reg_vx(&mut self, index: u8) -> u8 {
         self.vx[index as usize]
     }
-
 }
