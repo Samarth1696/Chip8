@@ -8,7 +8,7 @@ Over the past few months I was fascinated with Rust, so to improve my learning c
 
 ## How to play with the Emulator ##
 
-You can simply host it with `npm build` or you can play directly with my hosted site https://6369617d280e5302e58e6b09--precious-granita-924589.netlify.app/ <br/>
+You can simply host it with `npm` or you can play directly with my hosted site https://6369617d280e5302e58e6b09--precious-granita-924589.netlify.app/ <br/>
 #### Hope you liked it! :) ####
 ## References ##
 
